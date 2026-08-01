@@ -101,10 +101,9 @@ Proyecto desarrollado como parte del **Bootcamp de Data Science de Henry**, apli
 
 | Integrante | Rol y participación |
 |------------|---------------------|
-| **Yustin Rodríguez** | Scrum Master del proyecto, coordinación general del equipo, arquitectura de la solución, integración y administración del repositorio, desarrollo del pipeline de datos, integración de componentes, apoyo al desarrollo del Frontend (Streamlit), diseño y consolidación de la presentación final y documentación técnica. |
 | **Elías Mana** | Apoyo en la preparación y limpieza de datos, análisis exploratorio de datos (EDA), desarrollo, entrenamiento, optimización y evaluación de los modelos de Machine Learning utilizados por el sistema de recomendación. | |
 | **Carina Belén** | Análisis exploratorio de datos (EDA), análisis de negocio, desarrollo del Backend (FastAPI), integración de la API REST con el sistema de recomendación, apoyo en el despliegue de la solución, documentación funcional y validación de resultados. |
-| **Rocío Muñoz** | Preparación y limpieza de datos, apoyo al análisis exploratorio (EDA), desarrollo del Frontend (Streamlit), implementación del orquestador de la aplicación, integración de componentes, apoyo en el despliegue de la solución y aseguramiento de la calidad de los datos. |
+| **Rocío Muñoz** | Concepción de la idea del proyecto y de la estrategia de **Warm Start / Cold Start**, definición de la arquitectura general de la solución, preparación y limpieza de datos, análisis exploratorio (EDA), desarrollo del Frontend (Streamlit) e implementación del orquestador de la aplicación, diseño e implementación del **blend de modelos (warm)** y del modelo **cold start demográfico**, definición de la lógica de negocio y de los flujos de recomendación, integración de componentes, apoyo en el despliegue de la solución, aseguramiento de la calidad de los datos, documentación técnica y funcional completa del proyecto. |
 
 De esa forma queda claro que:
 

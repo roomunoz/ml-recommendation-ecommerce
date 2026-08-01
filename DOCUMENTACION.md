@@ -2,6 +2,8 @@
 
 Documentación de referencia para quien mantenga o extienda el sistema: la organización de los componentes, el recorrido de los datos desde los CSV crudos hasta una recomendación servida por la API, y las decisiones de diseño detrás de cada parte.
 
+**¿De qué trata el proyecto?** Es un **sistema de recomendación de productos para e-commerce** que combina dos estrategias: **Warm Start**, dirigida a usuarios con historial, que mezcla un modelo LightGBM entrenado sobre sus compras y vistas con un *blend* de favoritos y popularidad (50/50); y **Cold Start**, para usuarios nuevos, basada en *content-based* sobre la categoría de interés y un respaldo demográfico por país. La solución incluye una **API REST** (FastAPI) que sirve las recomendaciones, un **frontend web** (Streamlit) que la consume y un **dashboard analítico** (Power BI) para monitorear el negocio.
+
 ---
 
 ## 1. Alcance y arquitectura del sistema
@@ -341,6 +343,7 @@ Sin parámetros. Filtra `customers[customers["n_purchases_user"] > 0]` y devuelv
 - `API_URL = "https://ecommerce-clickstream-ml.onrender.com"`
 - `PAISES`: diccionario que relaciona los códigos de los 17 países soportados con su nombre.
 - `CATEGORIAS`: lista de categorías disponibles para realizar recomendaciones, incluyendo la opción **"Todas las categorías"**.
+- Acceso web en producción: `https://ecommerce-clickstream-frontend.onrender.com` (aplicación Streamlit desplegada).
 
 **Flujos del formulario:** el usuario elige entre *"Usuario con historial"* y *"Usuario nuevo"*. El primero puebla un selector con `GET /users-list` y envía el payload con `context: {}`. El segundo pide país (opcional), categoría de interés y edad, y envía `age` y `country` a nivel raíz del payload junto con `context: {country, category}`: si llega un país, la API responde por la rama demográfica; si no, por content-based (categoría o popularidad).
 
@@ -351,6 +354,7 @@ La configuración del proyecto se define directamente en el código, en vez de e
 | Configuración | Valor | Ubicación |
 |---|---|---|
 | URL de la API que consume el frontend | `https://ecommerce-clickstream-ml.onrender.com` | `SRC/app_front.py`, constante `API_URL` |
+| URL del frontend en producción | `https://ecommerce-clickstream-frontend.onrender.com` | Aplicación Streamlit desplegada |
 | Host/puerto de la API (local) | `127.0.0.1:8000` | `run_pipeline.py`, constantes `API_HOST`/`API_PORT` |
 | Puerto del frontend (local) | `8501` | `run_pipeline.py`, constante `FRONTEND_PORT` |
 | Semilla aleatoria | `42` | Se redefine por separado en `data_clean.py` y `pipeline_modelos.py` (`RANDOM_STATE`) — no hay una única fuente de verdad, aunque ambas usan el mismo valor |
