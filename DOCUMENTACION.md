@@ -88,9 +88,12 @@ Models/cold_start_content_based.joblib
 
 ```
 Streamlit (app_front.py)
-   │  arma payload según tipo de usuario elegido
+   │  arma payload según tipo de usuario elegido:
+   │    · con historial → {customer_id, context: {}}
+   │    · usuario nuevo → {customer_id: -1, age, country,
+   │                       context: {country, category}}
    ▼
-POST /recommend  { customer_id, context: {age, country, category} }
+POST /recommend  { customer_id, context, country, age }
    │
    ▼  appi.py: recommend()
    ├─ usuario_existe(customer_id) AND tiene_compras(customer_id)?
@@ -289,7 +292,7 @@ Pydantic valida automáticamente que `customer_id` esté presente y sea `int` (F
 | `tiene_compras(customer_id)` | `usuario.get("n_purchases_user", 0) > 0` |
 | `obtener_candidatos(customer_id, context)` | Excluye productos ya vistos (`HISTORIAL_USUARIO`). Si el usuario tiene preferencias de categoría registradas (`PREFERENCIAS_CATEGORIA`) y filtrar por sus 4 categorías top deja 10 o más candidatos, restringe a esas categorías; si no, usa el catálogo completo menos lo ya visto |
 | `recomendar_cold_start(customer_id, context, top_k)` | Si el usuario tiene un perfil real en `PERFILES_USUARIO` (interactuó durante el entrenamiento aunque nunca haya comprado), lo usa. Si no, arma un vector a partir de `context["category"]`, con la parte numérica en cero para no sesgar por una categoría no informada. Sin categoría, cae a un ranking por popularidad, general o por país si `context["country"]` llegó informado |
-| `recomendar_cold_start_demographic(context, top_k)` | Busca en `USUARIOS_DB` usuarios con compras, mismo país y edad dentro de ±5 años; cuenta la frecuencia de productos vistos entre ellos (filtrando por categoría si se especificó) y rankea por esa frecuencia relativa. Se activa cuando `age`/`country` llegan en la raíz del request, un escenario que la interfaz actual de Streamlit todavía no genera |
+| `recomendar_cold_start_demographic(context, top_k)` | Busca en `USUARIOS_DB` usuarios con compras, mismo país y edad dentro de ±5 años; cuenta la frecuencia de productos vistos entre ellos (filtrando por categoría si se especificó) y rankea por esa frecuencia relativa. Se activa cuando `age`/`country` llegan en la raíz del request; la interfaz de Streamlit ya lo dispara en el formulario de usuario nuevo cuando se selecciona un país |
 | `recomendar_warm_start(customer_id, context, top_k)` | El flujo completo está detallado en la sección 2.2 |
 
 ### 6.4 Especificación de endpoints
@@ -338,6 +341,9 @@ Sin parámetros. Filtra `customers[customers["n_purchases_user"] > 0]` y devuelv
 - `API_URL = "https://ecommerce-clickstream-ml.onrender.com"`
 - `PAISES`: diccionario que relaciona los códigos de los 17 países soportados con su nombre.
 - `CATEGORIAS`: lista de categorías disponibles para realizar recomendaciones, incluyendo la opción **"Todas las categorías"**.
+
+**Flujos del formulario:** el usuario elige entre *"Usuario con historial"* y *"Usuario nuevo"*. El primero puebla un selector con `GET /users-list` y envía el payload con `context: {}`. El segundo pide país (opcional), categoría de interés y edad, y envía `age` y `country` a nivel raíz del payload junto con `context: {country, category}`: si llega un país, la API responde por la rama demográfica; si no, por content-based (categoría o popularidad).
+
 ## 8. Configuración y variables de entorno
 
 La configuración del proyecto se define directamente en el código, en vez de externalizarse a variables de entorno — aunque `python-dotenv` figura entre las dependencias declaradas en `requirements.txt`:
@@ -387,7 +393,7 @@ Como ocurre en la mayoría de proyectos desarrollados en un contexto académico,
 
 - La imagen Docker puede ampliarse incorporando el directorio `Data/`, permitiendo que la API disponga de todos los recursos necesarios durante su inicialización en un entorno contenerizado.
 
-- La estrategia de recomendaciones para usuarios nuevos basada en información demográfica ya se encuentra implementada en la API. Como evolución del proyecto, esta funcionalidad puede integrarse también en la interfaz desarrollada con Streamlit.
+- La estrategia de recomendaciones para usuarios nuevos basada en información demográfica está implementada en la API y ya la dispara la interfaz de Streamlit en el formulario de usuario nuevo cuando se indica un país. Como evolución del proyecto, podría hacerse más explícita en la interfaz (por ejemplo, permitir elegir entre la rama demográfica y la de categorías).
 
 - La API fue diseñada para un entorno de demostración y pruebas. En un escenario de producción sería recomendable incorporar mecanismos de autenticación y control de acceso.
 

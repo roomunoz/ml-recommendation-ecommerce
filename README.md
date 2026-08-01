@@ -19,10 +19,22 @@
 
 </div>
 
+## 🎯 En pocas palabras
+
+Este proyecto es un **sistema híbrido de recomendación de productos para e-commerce**: dado un cliente (o una preferencia), devuelve un Top-10 de productos personalizado en tiempo real a través de una API REST (FastAPI), una interfaz web de demostración (Streamlit) y un dashboard ejecutivo (Power BI).
+
+El corazón de la solución es un motor que combina **dos estrategias de recomendación** y selecciona automáticamente la más adecuada según el contexto de cada usuario:
+
+- 🔥 **Warm Start — LightGBM.** Para clientes con historial de interacción (vistas, carritos, compras). Aprovecha su comportamiento pasado para predecir qué productos tienen más probabilidad de interesarle, combinando las predicciones de LightGBM con la similitud de contenido del producto (blend 50/50).
+- 🧊 **Cold Start — Content-Based Filtering.** Para usuarios nuevos o sin historial, de quienes no hay datos de comportamiento. Recomienda por similitud de atributos del producto (categoría, precio, popularidad, rating) o por popularidad (general o por país); si además se conoce su edad y país, también puede usar un enfoque demográfico basado en usuarios similares.
+
+La API decide automáticamente qué estrategia usar en cada solicitud, garantizando que siempre existan recomendaciones, incluso en la primera interacción de un cliente.
+
 ---
 
 ## 📑 Índice
 
+- [ En pocas palabras](#-en-pocas-palabras)
 - [ Resumen ejecutivo](#-resumen-ejecutivo)
 - [ Equipo de trabajo](#-equipo-de-trabajo)
 - [Contexto y valor de negocio](#-contexto-y-valor-de-negocio)
@@ -156,7 +168,7 @@ El sistema selecciona automáticamente la estrategia de recomendación más adec
 | Usuario con historial de compras o navegación | **Warm Start (LightGBM)** | Genera recomendaciones altamente personalizadas aprovechando el comportamiento histórico del cliente. |
 | Usuario nuevo que indica una categoría de interés | **Cold Start (Content-Based)** | Permite ofrecer recomendaciones desde la primera interacción sin depender de compras previas. |
 | Usuario nuevo sin información disponible | **Ranking por popularidad** | Garantiza que siempre existan productos sugeridos, evitando experiencias vacías. |
-| Usuario nuevo con información demográfica | **Cold Start Demográfico** | Permite generar recomendaciones utilizando perfiles de usuarios similares. Actualmente esta funcionalidad se encuentra implementada en la API y puede incorporarse fácilmente a futuras versiones de la interfaz web. |
+| Usuario nuevo con información demográfica | **Cold Start Demográfico** | Permite generar recomendaciones utilizando perfiles de usuarios similares. La interfaz web lo activa cuando el usuario nuevo indica su edad y país. |
 
 ### Flujo funcional del sistema
 
@@ -232,11 +244,13 @@ flowchart TB
     subgraph Cloud["☁️ Producción"]
         direction LR
         DOCK["🐳 Dockerfile\npython:3.11-slim + libgomp1"]
-        RENDER["Render\nhttps://ecommerce-clickstream-ml.onrender.com"]
+        RENDER["Render API\nhttps://ecommerce-clickstream-ml.onrender.com"]
+        RENDER_FRONT["Render Frontend\nhttps://ecommerce-clickstream-frontend.onrender.com"]
         DOCK -.->|"build (sin confirmar\nconfiguración exacta)"| RENDER
+        RENDER_FRONT -->|"API_URL hardcodeada"| RENDER
     end
 
-    LST -->|"API_URL hardcodeada"| RENDER
+    LST -.->|"desplegado como"| RENDER_FRONT
 ```
 
 
@@ -247,12 +261,12 @@ Grafo de imports de Python entre los módulos de `SRC/` (no incluye módulos de 
 
 ```mermaid
 flowchart LR
-    utils["utils.py"] -->|import| data_clean["data_clean.py"]
-    data_clean -->|import| feature_engineering["feature_engineering.py"]
-    data_clean -->|import| pipeline_modelos["pipeline_modelos.py"]
-    data_clean -->|import| export_powerbi["export_powerbi.py"]
-    feature_engineering -->|import| pipeline_modelos
-    export_model_metrics["export_model_metrics.py"] -->|import| export_powerbi
+    data_clean["data_clean.py"] -->|import| utils["utils.py"]
+    feature_engineering["feature_engineering.py"] -->|import| data_clean
+    pipeline_modelos["pipeline_modelos.py"] -->|import| data_clean
+    pipeline_modelos -->|import| feature_engineering
+    export_powerbi["export_powerbi.py"] -->|import| data_clean
+    export_powerbi -->|import| export_model_metrics["export_model_metrics.py"]
 
     pipeline_modelos -.->|"joblib.dump()"| joblib_files[("Models/*.joblib")]
     joblib_files -.->|"joblib.load()"| appi["appi.py"]
@@ -682,6 +696,8 @@ flowchart TD
 | Collaborative Filtering (SVD) | 0.2619 | 0.6435 | 0.1184 | 0.2000 | 0.8625 | 0.9143 |
 | Content-Based Filtering | **0.3767** | **0.6864** | **0.3683** | **0.4794** | 0.8555 | 0.9102 |
 
+> **Nota:** la tabla resume la comparación del notebook 05. El modelo LightGBM que se entrena en producción (`SRC/pipeline_modelos.py`) puede diferir levemente por el muestreo de negativos y el tamaño del set; los valores exactos que sirve la API se consultan en `GET /model-metrics`.
+
 ## 🤖 Motor de recomendación
 
 Uno de los principales retos del comercio electrónico es ofrecer recomendaciones relevantes tanto a clientes con historial de compras como a nuevos usuarios que aún no han interactuado con la plataforma. Resolver ambos escenarios permite mejorar la experiencia de compra, aumentar la probabilidad de conversión y facilitar el descubrimiento de productos de interés.
@@ -767,8 +783,8 @@ sequenceDiagram
 | Campo | Tipo | Obligatorio | Notas |
 |-------|------|:---:|-------|
 | `customer_id` | int | Sí | |
-| `context` | dict | No (default `{}`) | El frontend real solo usa `context.age`, `context.country`, `context.category` |
-| `country` | str | No (default `null`) | Campo raíz — junto con `age`, habilita la rama demográfica (ver nota abajo) |
+| `context` | dict | No (default `{}`) | En el frontend: vacío para usuarios con historial; `{country, category}` para usuarios nuevos |
+| `country` | str | No (default `null`) | Campo raíz — junto con `age`, habilita la rama demográfica. El frontend los envía en el flujo de usuario nuevo |
 | `age` | int | No (default `null`) | Campo raíz |
 
 **Lógica de selección de modelo:**
@@ -845,16 +861,16 @@ Para warm start, el score final es un blend: `score = 0.5 * score_LightGBM + 0.5
 
 ## 🌐 Frontend (Streamlit)
 
-**Archivo:** `SRC/app_front.py` · Consume la API vía `requests`, apuntando a `API_URL = "https://ecommerce-clickstream-ml.onrender.com"` (hardcodeado en el código).
+**Archivo:** `SRC/app_front.py` · Consume la API vía `requests`, apuntando a `API_URL = "https://ecommerce-clickstream-ml.onrender.com"` (hardcodeado en el código). Disponible en producción en `https://ecommerce-clickstream-frontend.onrender.com`.
 
 Flujo de la aplicación:
 
 1. **Estado del sistema** (sidebar): consulta `GET /`, muestra cantidad de usuarios/productos y si la API está conectada; expande métricas de ambos modelos vía `GET /model-metrics`.
 2. **Selección de tipo de usuario:**
-   - *Usuario con historial* → selector (`st.selectbox`) poblado desde `GET /users-list`; al elegir un usuario, se consulta `GET /users/{customer_id}` y se bloquean (`disabled`) los campos de edad y país, que se prellenan con los datos reales del historial — solo la categoría favorita queda editable.
-   - *Usuario nuevo* → se eligen país (opcional, "Todos los países" por defecto) y categoría de interés; no hay campo de edad en este flujo.
+   - *Usuario con historial* → selector (`st.selectbox`) poblado desde `GET /users-list`. Al enviar arma el payload con el `customer_id` elegido y `context: {}`: la API usa los datos reales del historial para recomendar (Warm Start).
+   - *Usuario nuevo* → se eligen país (opcional, "Todos los países" por defecto), categoría de interés y **edad**. El payload envía `age` y `country` a nivel raíz más `context: {country, category}`: si hay país seleccionado la API activa la rama **demográfica**; si no, cae en el **content-based** por categoría o en popularidad.
 3. Al enviar, arma el payload y hace `POST /recommend` (`requests.post`, con `json=payload`).
-4. Muestra los resultados como tabla (`st.dataframe`) con columnas Product ID, Producto, Categoría, Precio (USD), Score y Motivo, más el historial del usuario (si aplica) en un panel expandible.
+4. Muestra los resultados como tabla (`st.dataframe`) con columnas Product ID, Producto, Categoría, Precio (USD), Score y Motivo, más el perfil del usuario (edad, país, sesiones, compras, ticket y rating) en la parte superior.
 
 ### Navegación del sistema (estados de la interfaz)
 
@@ -869,10 +885,9 @@ stateDiagram-v2
     Formulario --> UsuarioNuevo: elige "🆕 Usuario nuevo"
 
     UsuarioConHistorial --> SeleccionUsuario: GET /users-list
-    SeleccionUsuario --> CamposBloqueados: GET /users/{id}\n(edad/país prellenados)
-    CamposBloqueados --> Enviando: click "🚀 Obtener recomendaciones"
+    SeleccionUsuario --> Enviando: click "🚀 Obtener recomendaciones"
 
-    UsuarioNuevo --> CamposLibres: elige país/categoría
+    UsuarioNuevo --> CamposLibres: elige país/categoría/edad
     CamposLibres --> Enviando: click "🚀 Obtener recomendaciones"
 
     Enviando --> Resultados: POST /recommend OK
@@ -901,11 +916,11 @@ FROM python:3.11-slim
 CMD ["uvicorn", "SRC.appi:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-
+> ⚠️ **Nota:** la API lee `Data/Raw/orders.csv` y `Data/Raw/order_items.csv` al arrancar para calcular la popularidad por país (`appi.py`). La imagen actual solo copia `SRC/` y `Models/`, así que **es necesario incluir también el directorio `Data/`** (o un subset con esos dos CSVs) para que la API levante dentro del contenedor.
 
 ### Render
 
-El frontend apunta a `https://ecommerce-clickstream-ml.onrender.com` como URL de producción de la API. No hay un `render.yaml` versionado en el repositorio, así que no se pudo verificar de forma independiente cómo Render construye exactamente esa imagen.
+La **API** está desplegada en `https://ecommerce-clickstream-ml.onrender.com` y el **frontend** en `https://ecommerce-clickstream-frontend.onrender.com`. No hay un `render.yaml` versionado en el repositorio, así que no se pudo verificar de forma independiente cómo Render construye exactamente la imagen.
 
 ### Orquestador local (`run_pipeline.py`)
 
@@ -1025,7 +1040,7 @@ El sistema fue desarrollado utilizando un dataset sintético de comercio electr�
 
 La matriz usuario-producto presenta una dispersión del **97.78 %**, una característica común en sistemas de recomendación. Por esta razón se implementó una estrategia híbrida que combina un modelo **Warm Start** para usuarios con historial y un modelo **Cold Start** para nuevos usuarios o productos.
 
-Actualmente el flujo demográfico de **Cold Start** se encuentra implementado en la API, aunque la interfaz desarrollada en Streamlit utiliza el flujo basado en categorías. Asimismo, el proyecto fue desarrollado y probado principalmente en un entorno Windows, por lo que en otros sistemas operativos pueden requerirse pequeños ajustes de configuración.
+El flujo demográfico de **Cold Start** (usuarios similares por edad/país) se activa en la API cuando el request incluye `age` y `country` a nivel raíz; el frontend lo dispara en el formulario de usuario nuevo cuando se indica país y edad. Asimismo, el proyecto fue desarrollado y probado principalmente en un entorno Windows, por lo que en otros sistemas operativos pueden requerirse pequeños ajustes de configuración.
 
 Al tratarse de un proyecto académico construido sobre datos sintéticos, la API no incorpora mecanismos de autenticación. En un escenario de producción sería recomendable añadir controles de acceso antes de su despliegue.
 
